@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: insta-prints
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_DEFAULT_EMAIL
+        value: instaprints@gmail.com

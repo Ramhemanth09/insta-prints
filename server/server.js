@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+const fs = require('fs');
 const connectDB = require('./config/db');
 const { generalLimiter } = require('./middleware/rateLimiter');
 
@@ -40,36 +41,23 @@ connectDB().then(async () => {
 
 // Security HTTP Headers with Helmet
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Allow inline scripts and client assets in production
 }));
 
-// CORS Configuration (Restrict to frontend client origin)
-const allowedOrigins = [
-  process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:3000',
-  'http://localhost:5000'
-];
-
+// CORS Configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
-      return callback(null, true);
-    }
-    return callback(new Error('Blocked by CORS policy'));
-  },
+  origin: '*', // Allow all origins for seamless client-server hosting
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Body Parsers
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// General Rate Limiting
+// General Rate Limiting for API routes
 app.use('/api', generalLimiter);
 
 // API Endpoints
@@ -89,11 +77,42 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Serve Frontend Static Files in Production (eliminates 404 on root / single-host deployment)
+const clientDistPath = path.resolve(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+
+  // SPA fallback for all non-API GET requests
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+} else {
+  // If dist not yet built, provide helpful landing page
+  app.get('/', (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head><title>Insta Prints API</title></head>
+        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 90vh; background: #0f172a; color: white;">
+          <div style="text-align: center; max-width: 500px; padding: 2rem; background: #1e293b; border-radius: 1rem;">
+            <h1 style="color: #818cf8; margin-bottom: 0.5rem;">Insta Prints API Server</h1>
+            <p style="color: #94a3b8; font-size: 0.9rem;">The backend API is online and operational.</p>
+            <p style="color: #34d399; font-size: 0.85rem; margin-top: 1rem;">Health check: <a href="/api/health" style="color: #38bdf8;">/api/health</a></p>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+}
+
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error('[Unhandled Server Error]:', err.stack || err.message);
   
-  if (err.message && err.message.includes('File type') || err.message.includes('Unsupported file')) {
+  if (err.message && (err.message.includes('File type') || err.message.includes('Unsupported file'))) {
     return res.status(400).json({ success: false, message: err.message });
   }
 
@@ -107,10 +126,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`=========================================`);
-  console.log(`  INSTA PRINTS BACKEND SERVER RUNNING`);
+  console.log(`  INSTA PRINTS SERVER LIVE`);
   console.log(`  Port: ${PORT}`);
-  console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`  Frontend Dist: ${fs.existsSync(clientDistPath) ? 'Mounted (/client/dist)' : 'API Mode'}`);
   console.log(`=========================================`);
 });
