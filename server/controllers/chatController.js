@@ -1,7 +1,6 @@
 const Message = require('../models/Message');
 const { Request } = require('../models/Request');
 
-// Normalize mobile
 const normalizeMobile = (m) => (m ? m.replace(/[^0-9]/g, '').slice(-10) : '');
 
 // Get all messages for a Request ID
@@ -35,7 +34,7 @@ const getMessages = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      messages
+      messages: Array.isArray(messages) ? messages : []
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -76,17 +75,15 @@ const sendMessage = async (req, res) => {
       }
     }
 
-    const message = new Message({
+    const message = await Message.create({
       requestId: cleanRequestId,
       sender,
       text: text ? text.trim() : '',
       attachmentUrl: attachmentUrl || null,
       attachmentName: attachmentName || null,
       attachmentType: attachmentType || null,
-      timestamp: new Date()
+      timestamp: new Date().toISOString()
     });
-
-    await message.save();
 
     return res.status(201).json({
       success: true,

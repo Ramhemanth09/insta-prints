@@ -26,7 +26,7 @@ const recordPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid payment amount.' });
     }
 
-    const payment = new Payment({
+    const payment = await Payment.create({
       requestId: cleanRequestId,
       amount: paymentAmount,
       type,
@@ -35,17 +35,27 @@ const recordPayment = async (req, res) => {
       paymentMethod,
       notes: notes ? notes.trim() : '',
       recordedBy: 'admin',
-      recordedAt: new Date()
+      recordedAt: new Date().toISOString()
     });
-
-    await payment.save();
 
     // Update Request payment summary & status
     if (status === 'paid') {
+      if (!requestDoc.paymentSummary) {
+        requestDoc.paymentSummary = {
+          advancePaid: false,
+          advancePaidAmount: 0,
+          advancePaidAt: null,
+          remainingPaid: false,
+          remainingPaidAmount: 0,
+          remainingPaidAt: null,
+          totalPaid: 0
+        };
+      }
+
       if (type === 'advance') {
         requestDoc.paymentSummary.advancePaid = true;
         requestDoc.paymentSummary.advancePaidAmount = (requestDoc.paymentSummary.advancePaidAmount || 0) + paymentAmount;
-        requestDoc.paymentSummary.advancePaidAt = new Date();
+        requestDoc.paymentSummary.advancePaidAt = new Date().toISOString();
         
         // Advance payment confirms the order
         if (['submitted', 'under_review', 'quotation_sent', 'awaiting_confirmation', 'awaiting_advance_payment'].includes(requestDoc.currentStatus)) {
@@ -60,7 +70,7 @@ const recordPayment = async (req, res) => {
       } else if (type === 'remaining' || type === 'full') {
         requestDoc.paymentSummary.remainingPaid = true;
         requestDoc.paymentSummary.remainingPaidAmount = (requestDoc.paymentSummary.remainingPaidAmount || 0) + paymentAmount;
-        requestDoc.paymentSummary.remainingPaidAt = new Date();
+        requestDoc.paymentSummary.remainingPaidAt = new Date().toISOString();
 
         if (requestDoc.currentStatus === 'awaiting_remaining_payment') {
           requestDoc.currentStatus = 'completed';
@@ -114,8 +124,7 @@ const submitPaymentReference = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Verification failed.' });
     }
 
-    // Create pending payment record
-    const payment = new Payment({
+    const payment = await Payment.create({
       requestId: cleanRequestId,
       amount: parseFloat(amount) || (paymentType === 'advance' ? requestDoc.quotation.advanceAmount : requestDoc.quotation.remainingAmount),
       type: paymentType,
@@ -124,10 +133,8 @@ const submitPaymentReference = async (req, res) => {
       paymentMethod: 'UPI / Direct Transfer',
       notes: 'User submitted transaction reference for verification.',
       recordedBy: 'user',
-      recordedAt: new Date()
+      recordedAt: new Date().toISOString()
     });
-
-    await payment.save();
 
     await StatusHistory.create({
       requestId: cleanRequestId,
@@ -155,7 +162,7 @@ const getPayments = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      payments
+      payments: Array.isArray(payments) ? payments : []
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

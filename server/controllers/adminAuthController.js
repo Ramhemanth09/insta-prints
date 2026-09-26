@@ -19,7 +19,6 @@ const adminLogin = async (req, res) => {
     const admin = await Admin.findOne({ email: email.trim().toLowerCase() });
 
     if (!admin) {
-      // Log failed attempt
       await FailedLoginLog.create({
         emailAttempted: email,
         ip,
@@ -36,7 +35,6 @@ const adminLogin = async (req, res) => {
     const isMatch = await bcrypt.compare(password, admin.password);
 
     if (!isMatch) {
-      // Log failed attempt
       await FailedLoginLog.create({
         emailAttempted: email,
         ip,
@@ -51,7 +49,7 @@ const adminLogin = async (req, res) => {
     }
 
     // Update last login
-    admin.lastLoginAt = new Date();
+    admin.lastLoginAt = new Date().toISOString();
     await admin.save();
 
     // Generate JWT short-lived token (4 hours)
@@ -81,13 +79,16 @@ const adminLogin = async (req, res) => {
 
 const getAdminProfile = async (req, res) => {
   try {
-    const admin = await Admin.findById(req.admin.id).select('-password');
+    const admin = await Admin.findById(req.admin.id);
     if (!admin) {
       return res.status(404).json({ success: false, message: 'Admin not found.' });
     }
+    const adminObj = { ...admin };
+    delete adminObj.password;
+    delete adminObj._collection;
     return res.status(200).json({
       success: true,
-      admin
+      admin: adminObj
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
